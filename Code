@@ -1,0 +1,223 @@
+Source:  StudentsController.cs
+Code:
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using StudentManagementAPI.Models;
+ 
+namespace StudentManagementAPI.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class StudentsController : ControllerBase
+    {
+        private readonly string _connStr;
+ 
+        public StudentsController(IConfiguration config)
+        {
+            _connStr = config.GetConnectionString("StudentDB")!;
+        }
+ 
+        // GET: api/students  (Read all)
+        [HttpGet]
+        public IActionResult GetAll()
+        {
+            var list = new List<Student>();
+ 
+            using (var con = new SqlConnection(_connStr))
+            {
+                var cmd = new SqlCommand("SELECT StudentId, Name, Email, Course, Age FROM Students", con);
+                con.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        list.Add(ReadStudent(dr));
+                    }
+                }
+            }
+            return Ok(list);
+        }
+ 
+        // GET: api/students/1  (Read one)
+        [HttpGet("{id}")]
+        public IActionResult GetById(int id)
+        {
+            using (var con = new SqlConnection(_connStr))
+            {
+                var cmd = new SqlCommand(
+                    "SELECT StudentId, Name, Email, Course, Age FROM Students WHERE StudentId=@id", con);
+                cmd.Parameters.AddWithValue("@id", id);
+                con.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        return Ok(ReadStudent(dr));
+                    }
+                }
+            }
+            return NotFound($"Student with id {id} not found.");
+        }
+ 
+        // POST: api/students  (Create)
+        [HttpPost]
+        public IActionResult Create(Student s)
+        {
+            int newId;
+            using (var con = new SqlConnection(_connStr))
+            {
+                var cmd = new SqlCommand(
+                    "INSERT INTO Students (Name, Email, Course, Age) " +
+                    "OUTPUT INSERTED.StudentId VALUES (@name, @email, @course, @age)", con);
+                FillParameters(cmd, s);
+                con.Open();
+                newId = (int)cmd.ExecuteScalar();
+            }
+            s.StudentId = newId;
+            return CreatedAtAction(nameof(GetById), new { id = newId }, s);
+        }
+ 
+        // PUT: api/students/1  (Update)
+        [HttpPut("{id}")]
+        public IActionResult Update(int id, Student s)
+        {
+            int rows;
+            using (var con = new SqlConnection(_connStr))
+            {
+                var cmd = new SqlCommand(
+                    "UPDATE Students SET Name=@name, Email=@email, Course=@course, Age=@age " +
+                    "WHERE StudentId=@id", con);
+                FillParameters(cmd, s);
+                cmd.Parameters.AddWithValue("@id", id);
+                con.Open();
+                rows = cmd.ExecuteNonQuery();
+            }
+            if (rows == 0)
+            {
+                return NotFound($"Student with id {id} not found.");
+            }
+            s.StudentId = id;
+            return Ok(s);
+        }
+ 
+        // DELETE: api/students/1  (Delete)
+        [HttpDelete("{id}")]
+        public IActionResult Delete(int id)
+        {
+            int rows;
+            using (var con = new SqlConnection(_connStr))
+            {
+                var cmd = new SqlCommand("DELETE FROM Students WHERE StudentId=@id", con);
+                cmd.Parameters.AddWithValue("@id", id);
+                con.Open();
+                rows = cmd.ExecuteNonQuery();
+            }
+            if (rows == 0)
+            {
+                return NotFound($"Student with id {id} not found.");
+            }
+            return NoContent();
+        }
+ 
+        // ---------- Helpers ----------
+        private static Student ReadStudent(SqlDataReader dr)
+        {
+            return new Student
+            {
+                StudentId = dr.GetInt32(0),
+                Name = dr.GetString(1),
+                Email = dr.GetString(2),
+                Course = dr.GetString(3),
+                Age = dr.GetInt32(4)
+            };
+        }
+ 
+        private static void FillParameters(SqlCommand cmd, Student s)
+        {
+            cmd.Parameters.AddWithValue("@name", s.Name);
+            cmd.Parameters.AddWithValue("@email", s.Email);
+            cmd.Parameters.AddWithValue("@course", s.Course);
+            cmd.Parameters.AddWithValue("@age", s.Age);
+        }
+    }
+}
+Source:  Student.cs
+Code:
+using System.ComponentModel.DataAnnotations;
+ 
+namespace StudentManagementAPI.Models
+{
+    public class Student
+    {
+        public int StudentId { get; set; }
+ 
+        [Required]
+        public string Name { get; set; } = string.Empty;
+ 
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+ 
+        [Required]
+        public string Course { get; set; } = string.Empty;
+ 
+        [Range(1, 100)]
+        public int Age { get; set; }
+    }
+}
+Source:  Program.cs
+Code:
+var builder = WebApplication.CreateBuilder(args);
+ 
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+ 
+var app = builder.Build();
+ 
+// Swagger UI (opens at /swagger) - used to test the API
+app.UseSwagger();
+app.UseSwaggerUI();
+ 
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+ 
+app.Run();
+Source:  appsettings.json
+Code:
+{
+  "ConnectionStrings": {
+    "StudentDB": "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=StudentDB;Integrated Security=True;TrustServerCertificate=True"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+Source:  StudentDB.sql
+Code:
+-- Run on (localdb)\MSSQLLocalDB
+CREATE DATABASE StudentDB;
+GO
+ 
+USE StudentDB;
+GO
+ 
+CREATE TABLE Students (
+    StudentId INT IDENTITY(1,1) PRIMARY KEY,
+    Name      NVARCHAR(100) NOT NULL,
+    Email     NVARCHAR(100) NOT NULL,
+    Course    NVARCHAR(50)  NOT NULL,
+    Age       INT           NOT NULL
+);
+GO
+ 
+INSERT INTO Students (Name, Email, Course, Age) VALUES
+('Amit Sharma', 'amit@example.com', 'BCA', 20),
+('Priya Reddy', 'priya@example.com', 'BCA', 21),
+('Rahul Verma', 'rahul@example.com', 'MCA', 23);
+GO
